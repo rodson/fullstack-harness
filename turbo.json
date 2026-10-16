@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalPassThroughEnv": ["CI", "DATABASE_URL", "PORT"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "env": ["API_URL"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+    "typecheck": {},
+    "lint": {},
+    "test": {},
+    "test:e2e": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

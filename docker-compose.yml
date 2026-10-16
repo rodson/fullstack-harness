@@ -1,0 +1,18 @@
+# 可选：本地真实 Postgres。默认开发/测试用 PGlite（进程内 Postgres，零依赖）。
+# 启用：docker compose up -d，然后在 apps/api/.env 设置
+#   DATABASE_URL=postgres://app:app@localhost:5432/app
+# 并运行 pnpm db:migrate（Postgres 不会在启动时自动迁移）。
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

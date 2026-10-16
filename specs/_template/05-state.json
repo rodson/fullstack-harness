@@ -1,0 +1,21 @@
+{
+  "feature": "{{SLUG}}",
+  "dir": "{{DIR}}",
+  "stage": "drafting",
+  "branch": "feature/{{SLUG}}",
+  "createdAt": "{{DATE}}",
+  "gates": {
+    "requirement_review": { "status": "pending", "by": null, "at": null },
+    "plan_review": { "status": "pending", "by": null, "at": null },
+    "acceptance": { "status": "not_started", "by": null, "at": null }
+  },
+  "lastVerify": null,
+  "metrics": {
+    "open_questions": 0,
+    "plan_deviations": 0,
+    "ac_failed": 0,
+    "verify_rounds": 0,
+    "human_interventions": 0
+  },
+  "history": []
+}

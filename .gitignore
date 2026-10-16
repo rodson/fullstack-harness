@@ -1,0 +1,27 @@
+# deps / build
+node_modules/
+.next/
+dist/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# local data / env
+.data/
+.env
+.env.local
+.env.*.local
+.env.production
+
+# claude code 个人覆盖（团队共享的是 .claude/settings.json）
+.claude/settings.local.json
+
+# os / editor
+.DS_Store
+*.pem

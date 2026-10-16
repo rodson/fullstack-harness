@@ -1,0 +1,32 @@
+{
+  "name": "fullstack-harness",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.6",
+  "engines": {
+    "node": ">=22.22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint && eslint scripts .claude/hooks",
+    "test": "turbo run test && node --test \"scripts/*.test.mjs\"",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "test:e2e": "pnpm --filter @app/web test:e2e",
+    "db:generate": "pnpm --filter @app/db generate",
+    "db:migrate": "pnpm --filter @app/db migrate",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "spec": "node scripts/spec.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "eslint": "catalog:",
+    "globals": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

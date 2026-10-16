@@ -1,0 +1,101 @@
+{
+  "feature": "tasks",
+  "dir": "2026-10-16-tasks",
+  "stage": "done",
+  "branch": "feature/tasks",
+  "createdAt": "2026-10-16",
+  "note": "脚手架自带的示例 feature，演示完整流程",
+  "gates": {
+    "requirement_review": {
+      "status": "approved",
+      "by": "human",
+      "at": "2026-10-16T09:30:00.000Z"
+    },
+    "plan_review": {
+      "status": "approved",
+      "by": "human",
+      "at": "2026-10-16T11:05:00.000Z"
+    },
+    "acceptance": {
+      "status": "approved",
+      "by": "human",
+      "at": "2026-10-16T16:20:00.000Z"
+    }
+  },
+  "lastVerify": {
+    "at": "2026-10-16T15:40:12.000Z",
+    "ok": true,
+    "exitCode": 0,
+    "durationMs": 38000,
+    "finishedAtMs": 1792165212000
+  },
+  "metrics": {
+    "open_questions": 3,
+    "plan_deviations": 1,
+    "ac_failed": 0,
+    "verify_rounds": 1,
+    "human_interventions": 0
+  },
+  "history": [
+    {
+      "at": "2026-10-16T09:00:00.000Z",
+      "by": "human",
+      "action": "init",
+      "to": "drafting"
+    },
+    {
+      "at": "2026-10-16T09:20:00.000Z",
+      "by": "claude",
+      "action": "submit requirement",
+      "from": "drafting",
+      "to": "requirement_review"
+    },
+    {
+      "at": "2026-10-16T09:30:00.000Z",
+      "by": "human",
+      "action": "approve requirement_review",
+      "from": "requirement_review",
+      "to": "planning"
+    },
+    {
+      "at": "2026-10-16T10:40:00.000Z",
+      "by": "claude",
+      "action": "submit plan",
+      "from": "planning",
+      "to": "awaiting_approval"
+    },
+    {
+      "at": "2026-10-16T11:05:00.000Z",
+      "by": "human",
+      "action": "approve plan_review",
+      "from": "awaiting_approval",
+      "to": "implementing"
+    },
+    {
+      "at": "2026-10-16T15:41:00.000Z",
+      "by": "claude",
+      "action": "submit impl",
+      "from": "implementing",
+      "to": "verifying"
+    },
+    {
+      "at": "2026-10-16T16:10:00.000Z",
+      "by": "claude",
+      "action": "verdict pass"
+    },
+    {
+      "at": "2026-10-16T16:20:00.000Z",
+      "by": "human",
+      "action": "approve acceptance",
+      "from": "verifying",
+      "to": "retro"
+    },
+    {
+      "at": "2026-10-16T16:45:00.000Z",
+      "by": "claude",
+      "action": "submit retro",
+      "from": "retro",
+      "to": "done"
+    }
+  ]
+}
