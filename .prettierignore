@@ -9,5 +9,5 @@ test-results
 pnpm-lock.yaml
 packages/db/drizzle
 **/next-env.d.ts
-**/AGENTS.md
+apps/*/AGENTS.md
 specs/**/05-state.json

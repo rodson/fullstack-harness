@@ -39,7 +39,8 @@ pnpm --filter @app/web exec playwright install chromium && pnpm test:e2e
 ## 目录
 
 ```
-├── CLAUDE.md / AGENTS.md(软链)   # 给 Claude 的项目说明（< 80 行）
+├── AGENTS.md                     # 项目说明唯一来源，所有 AI 工具共用
+├── CLAUDE.md                     # @AGENTS.md + Claude Code 专属（hooks、命令、子代理）
 ├── .claude/
 │   ├── settings.json             # 权限 + hooks（团队共享）
 │   ├── hooks/                    # guard-bash（高危命令）、format（prettier）
@@ -119,5 +120,6 @@ hooks 是防止"顺手"和长会话漂移的护栏，不是安全边界；真正
 - **Claude 被 hook 拦住了**：先看拦截信息里的"下一步"。多数情况是 stage 不对（例如 plan 还没被批准），这是预期行为。
 - **想临时改脚手架本身**：`pnpm spec pause` 进入维护模式，改完 `pnpm spec use <dir>` 恢复。
 - **视觉基线**：截图按平台命名（`*-chromium-darwin.png`）。首次运行自动生成；在另一个平台（如 CI 的 Linux）首次运行时也会生成该平台的基线，需要提交后才开始比对。更新基线：`pnpm test:e2e --update-snapshots`。
-- **Next.js 16 与模型训练数据不一致**：`apps/web/AGENTS.md` 由 `next dev` 维护，指引模型阅读 `node_modules/next/dist/docs/`；`apps/web/CLAUDE.md` 通过 `@AGENTS.md` 导入它。
+- **AGENTS.md 与 CLAUDE.md 怎么分工**：工具无关的内容只写 `AGENTS.md`（Codex、Cursor、Copilot 等读它）；`CLAUDE.md` 第一行 `@AGENTS.md` 导入它，下面只追加 Claude Code 专属机制。不用软链：Windows 上 git 默认不检出符号链接，而且"hook 会拦截"之类的描述对其他工具并不成立。
+- **Next.js 16 与模型训练数据不一致**：`apps/web/AGENTS.md` 由 `next dev` 维护，指引模型阅读 `node_modules/next/dist/docs/`；`apps/web/CLAUDE.md` 通过 `@AGENTS.md` 导入它（与根目录同一模式）。
 - **pnpm 11 的 minimumReleaseAge**：默认拒绝发布不足 1 天的版本。升级依赖时选择已发布超过 1 天的版本，而不是添加排除项。
