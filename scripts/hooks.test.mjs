@@ -36,6 +36,9 @@ describe('guard-bash', () => {
       'git push origin feature/kanban',
       'git checkout main',
       'cat specs/f/05-state.json',
+      'cat specs/.current 2>/dev/null || echo none',
+      'cat specs/f/05-state.json 2>&1 | head -5',
+      'sed -n 1,5p specs/f/05-state.json',
     ]) {
       assert.equal(guard(cmd), 0, cmd)
     }
@@ -66,6 +69,11 @@ describe('guard-bash', () => {
       'CLAUDECODE= node scripts/spec.mjs status',
       'env -u CLAUDECODE pnpm spec status',
       'echo {} > specs/f/05-state.json',
+      'echo x >> specs/.current',
+      'cat x | tee specs/f/05-state.json',
+      'mv /tmp/s.json specs/f/05-state.json',
+      "sed -i '' 's/drafting/implementing/' specs/f/05-state.json",
+      `node -e "require('fs').writeFileSync('specs/f/05-state.json', '{}')"`,
       'rm specs/.current',
     ]) {
       assert.equal(guard(cmd), 2, cmd)

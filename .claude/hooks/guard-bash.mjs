@@ -59,16 +59,18 @@ for (const m of cmd.matchAll(/\brm\s+((?:-{1,2}[a-zA-Z-]+\s+)+)([^;&|]*)/g)) {
   }
 }
 
-// 状态文件只能经 pnpm spec 修改
+// 状态文件只能经 pnpm spec 修改：拦截写向状态文件的命令；只读访问（cat、2>/dev/null）放行
 const root = process.env.CLAUDE_PROJECT_DIR ?? payload.cwd ?? process.cwd()
-if (
-  /05-state\.json|specs\/\.current/.test(cmd) &&
-  /(>|\btee\b|\bsed\s+-i|\bperl\s+-[a-z]*i|\bmv\b|\bcp\b|\brm\b|writeFile|\bpython3?\b|\bnode\s+-e)/.test(
-    cmd,
-  )
-) {
-  block('状态文件只能通过 pnpm spec <command> 修改')
-}
+const STATE = String.raw`\S*(05-state\.json|specs/\.current)`
+const mentionsState = new RegExp(STATE).test(cmd)
+const writesState =
+  new RegExp(String.raw`>{1,2}\s*['"]?${STATE}`).test(cmd) ||
+  new RegExp(
+    String.raw`\b(tee|sed\s+-i|perl\s+-[a-z]*i|mv|cp|rm|truncate|ln)\b[^;&|]*${STATE}`,
+  ).test(cmd) ||
+  (/\b(python3?|node|perl|ruby)\b/.test(cmd) &&
+    /(writeFile|appendFile|write_text|\.write\(|open\()/.test(cmd))
+if (mentionsState && writesState) block('状态文件只能通过 pnpm spec <command> 修改')
 
 // 非 implementing 阶段：不允许用 shell 写 apps/ 或 packages/（Edit/Write 已由 check-write 拦截）
 let stage = null
