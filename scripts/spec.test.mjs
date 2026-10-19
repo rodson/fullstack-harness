@@ -95,6 +95,56 @@ ${conclusion}
 | AC-01 | ${result} | a.test.ts | |
 `
 
+const INTERVIEW = (extra = '') => `| Q-ID | 维度 | 问题 | 回答（原话） | 轮次 |
+| --- | --- | --- | --- | --- |
+| Q-0 | 想法 | 原始想法 | 做个周报汇总 | 0 |
+| Q-1 | 问题 | 现在哪里痛 | 汇总要半天 | 1 |
+| Q-2 | 用户 | 谁用 | 组长 | 1 |
+| Q-3 | 场景 | 什么时候用 | 周五下午 | 1 |
+| Q-4 | 现状 | 现在怎么做 | 手工复制 | 1 |
+| Q-5 | 目标 | 怎样算成功 | 十分钟内 | 2 |
+| Q-6 | 范围 | 必须有什么 | 能提交周报 | 2 |
+| Q-7 | 约束 | 有什么限制 | 未回答 | 2 |
+${extra}`
+const DISCOVERED_PRD = ({ mvp, goal = '10 分钟' } = {}) => `# 产品需求：demo
+## 1. 问题陈述
+组长汇总周报耗时（Q-1）
+## 2. 目标用户与场景
+组长，周五（Q-2、Q-3）
+## 3. 现状与替代方案
+手工复制（Q-4）
+## 4. 成功指标
+| 指标 | 当前值 | 目标值 | 衡量方式 |
+| --- | --- | --- | --- |
+| 汇总耗时 | 半天 | ${goal} | 计时 |
+## 5. MVP 范围
+| 能力 | 优先级 | 来源 | 说明 |
+| --- | --- | --- | --- |
+${
+  mvp ??
+  `| 提交周报 | Must | Q-6 | |
+| 导出 PDF | Won't | 推断 | |`
+}
+## 6. 用户旅程
+1. 提交 2. 汇总
+## 7. 约束
+无
+## 8. 风险与待验证假设
+组长是否愿意切换工具
+`
+const RISK = '| Q-8 | 风险 | 最担心什么 | 没人用 | 2 |\n'
+
+function startDiscovery(slug = 'demo') {
+  ok(['init', slug])
+  ok(['discover'])
+}
+
+function toDiscovered(slug) {
+  startDiscovery(slug)
+  write(doc('00-input/discovery/interview.md'), INTERVIEW(RISK))
+  write(doc('00-input/prd.md'), DISCOVERED_PRD())
+}
+
 function toImplementing() {
   ok(['init', 'demo'])
   write(doc('01-requirement.md'), REQUIREMENT)
@@ -145,6 +195,49 @@ describe('init', () => {
     ok(['init', 'demo'])
     assert.equal(run(['init', 'other']).code, 1)
   })
+
+  it('普通 init 跳过探索阶段，不留下探索模板', () => {
+    ok(['init', 'demo'])
+    const st = state()
+    assert.equal(st.gates.prd_review.status, 'skipped')
+    assert.equal(st.metrics.discovery_questions, 0)
+    for (const name of ['00-input/prd.discover.md', '00-input/idea.md', '00-input/discovery'])
+      assert.equal(fs.existsSync(path.join(root, doc(name))), false, name)
+  })
+
+  it('discover：drafting 且 prd.md 为空时切到 discovering，换成结构化模板', () => {
+    ok(['init', 'demo'])
+    write(doc('00-input/idea.md'), '人写的长材料\n')
+    ok(['discover'])
+    const st = state()
+    assert.equal(st.stage, 'discovering')
+    assert.equal(st.gates.prd_review.status, 'pending')
+    assert.equal(st.history.at(-1).action, 'discover')
+    const prd = fs.readFileSync(path.join(root, doc('00-input/prd.md')), 'utf8')
+    assert.match(prd, /## 5\. MVP 范围/)
+    assert.match(prd, /^# 产品需求：demo$/m)
+    assert.equal(fs.existsSync(path.join(root, doc('00-input/prd.discover.md'))), false)
+    assert.ok(fs.existsSync(path.join(root, doc('00-input/discovery/interview.md'))))
+    assert.equal(
+      fs.readFileSync(path.join(root, doc('00-input/idea.md')), 'utf8'),
+      '人写的长材料\n',
+    )
+  })
+
+  it('discover：已有 PRD 或已走过探索阶段时拒绝，避免覆盖', () => {
+    ok(['init', 'demo'])
+    write(doc('00-input/prd.md'), '# 原始需求：demo\n\n做一个任务列表\n')
+    const r = run(['discover'])
+    assert.equal(r.code, 1)
+    assert.match(r.out, /prd\.md 已经有内容/)
+    assert.equal(state().stage, 'drafting')
+
+    ok(['cancel', '换个 slug'], { human: true })
+    toDiscovered('again')
+    ok(['submit', 'discovery'])
+    ok(['approve', 'prd_review'], { human: true })
+    assert.match(run(['discover']).out, /已经走过探索阶段/)
+  })
 })
 
 describe('check-write 闸门', () => {
@@ -167,6 +260,17 @@ describe('check-write 闸门', () => {
     assert.equal(gate('.claude/settings.json'), 2)
     assert.equal(gate('specs/_template/01-requirement.md'), 2)
     assert.equal(gate('specs/archive/x/01-requirement.md'), 2)
+  })
+
+  it('discovering：只能写 discovery/ 与 prd.md；idea.md、design/ 是人的原始材料', () => {
+    startDiscovery()
+    assert.equal(gate(doc('00-input/discovery/interview.md')), 0)
+    assert.equal(gate(doc('00-input/discovery/research.md')), 0)
+    assert.equal(gate(doc('00-input/prd.md')), 0)
+    assert.equal(gate(doc('00-input/idea.md')), 2)
+    assert.equal(gate(doc('00-input/design/a.png')), 2)
+    assert.equal(gate(doc('01-requirement.md')), 2)
+    assert.equal(gate('apps/api/src/a.ts'), 2)
   })
 
   it('implementing：可改代码与 06，不能改已批准的计划和「禁止触碰的目录」', () => {
@@ -230,6 +334,101 @@ describe('阶段推进', () => {
     ok(['reject', 'requirement_review', '范围不清'])
     assert.equal(state().stage, 'drafting')
     assert.equal(state().metrics.human_interventions, 1)
+  })
+})
+
+describe('探索阶段', () => {
+  it('submit discovery 拒绝空模板', () => {
+    startDiscovery()
+    const r = run(['submit', 'discovery'])
+    assert.equal(r.code, 1)
+    assert.match(r.out, /访谈没有覆盖「问题」维度/)
+    assert.match(r.out, /prd\.md「问题陈述」小节为空/)
+    assert.match(r.out, /至少要有一行写明目标值/)
+    assert.match(r.out, /至少要有一条 Must/)
+  })
+
+  it("submit discovery 检查维度覆盖、Won't、目标值与来源追溯", () => {
+    startDiscovery()
+    write(doc('00-input/discovery/interview.md'), INTERVIEW())
+    write(
+      doc('00-input/prd.md'),
+      DISCOVERED_PRD({
+        goal: '',
+        mvp: '| 提交周报 | Must | Q-6 | |\n| 自动提醒 | Should | Q-99 | |\n| 评论 | Should | | |',
+      }),
+    )
+    const r = run(['submit', 'discovery'])
+    assert.equal(r.code, 1)
+    assert.match(r.out, /访谈没有覆盖「风险」维度/)
+    assert.match(r.out, /至少要有一条 Won't/)
+    assert.match(r.out, /至少要有一行写明目标值/)
+    assert.match(r.out, /MVP「自动提醒」引用了不存在的 Q-99/)
+    assert.match(r.out, /MVP「评论」没有来源/)
+    assert.equal(state().stage, 'discovering')
+  })
+
+  it('调研条目 R-n 可以作为 MVP 来源', () => {
+    toDiscovered()
+    write(
+      doc('00-input/discovery/research.md'),
+      '| R-ID | 对象 | 发现 | 来源 | 启发 |\n| --- | --- | --- | --- | --- |\n| R-1 | 竞品 A | 有模板 | https://a.example | 可借鉴 |\n',
+    )
+    write(
+      doc('00-input/prd.md'),
+      DISCOVERED_PRD({
+        mvp: "| 提交周报 | Must | Q-6 | |\n| 周报模板 | Should | R-1 | |\n| 导出 | Won't | R-2 | |",
+      }),
+    )
+    const r = run(['submit', 'discovery'])
+    assert.equal(r.code, 1)
+    assert.match(r.out, /MVP「导出」引用了不存在的 R-2/)
+    assert.doesNotMatch(r.out, /周报模板/)
+  })
+
+  it('submit → 人工 approve prd_review → drafting，PRD 冻结；度量与推断项被记录', () => {
+    toDiscovered()
+    ok(['submit', 'discovery'])
+    assert.equal(state().stage, 'prd_review')
+    assert.equal(state().gates.prd_review.status, 'in_review')
+    assert.equal(state().metrics.discovery_questions, 9)
+    assert.equal(state().metrics.prd_inferred, 1)
+
+    assert.equal(run(['approve', 'prd_review']).code, 1)
+    const r = ok(['approve', 'prd_review'], { human: true })
+    assert.match(r.out, /推断.*导出 PDF/)
+    assert.equal(state().stage, 'drafting')
+
+    assert.equal(gate(doc('01-requirement.md')), 0)
+    assert.equal(gate(doc('00-input/prd.md')), 2)
+    assert.equal(gate(doc('00-input/discovery/interview.md')), 2)
+    assert.match(run(['context']).out, /本阶段允许写：specs\/[^、]+\/01-requirement\.md$/m)
+  })
+
+  it('reject prd_review 打回 discovering', () => {
+    toDiscovered()
+    ok(['submit', 'discovery'])
+    ok(['reject', 'prd_review', 'MVP 太大'])
+    assert.equal(state().stage, 'discovering')
+    assert.equal(state().gates.prd_review.status, 'rejected')
+    assert.equal(state().metrics.human_interventions, 1)
+  })
+})
+
+describe('cancel', () => {
+  it('只能由人执行、必须写原因；标记 cancelled 并归档', () => {
+    startDiscovery()
+    const name = feature()
+    assert.equal(run(['cancel', '不做了']).code, 1)
+    assert.equal(run(['cancel'], { human: true }).code, 1)
+    ok(['cancel', '不做了'], { human: true })
+    assert.equal(fs.existsSync(path.join(root, 'specs/.current')), false)
+    const archived = state(`specs/archive/${name}`)
+    assert.equal(archived.stage, 'cancelled')
+    assert.equal(archived.history.at(-1).note, '不做了')
+    assert.ok(
+      fs.existsSync(path.join(root, `specs/archive/${name}/00-input/discovery/interview.md`)),
+    )
   })
 })
 

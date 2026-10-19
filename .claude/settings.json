@@ -48,9 +48,11 @@
       "Bash(pnpm spec approve:*)",
       "Bash(pnpm spec use:*)",
       "Bash(pnpm spec pause:*)",
+      "Bash(pnpm spec cancel:*)",
       "Bash(node scripts/spec.mjs approve:*)",
       "Bash(node scripts/spec.mjs use:*)",
-      "Bash(node scripts/spec.mjs pause:*)"
+      "Bash(node scripts/spec.mjs pause:*)",
+      "Bash(node scripts/spec.mjs cancel:*)"
     ]
   },
   "hooks": {

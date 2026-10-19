@@ -66,6 +66,7 @@ describe('guard-bash', () => {
       'pnpm spec approve plan_review',
       'node scripts/spec.mjs approve acceptance --force',
       'pnpm spec pause',
+      'pnpm spec cancel "不做了"',
       'CLAUDECODE= node scripts/spec.mjs status',
       'env -u CLAUDECODE pnpm spec status',
       'echo {} > specs/f/05-state.json',

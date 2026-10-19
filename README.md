@@ -2,7 +2,7 @@
 
 Web 全栈项目脚手架 + Claude Code 交付流水线。设计来源：[rodson/web-harness-learning](https://github.com/rodson/web-harness-learning)。
 
-需求 → 规格化 → 计划 / 用例 / 验收标准 →【人工签字】→ 自动实现 → 独立验收 →【人工签字】→ 复盘 → 反哺流程。核心原则：
+（想法 → 访谈出 PRD →【人工签字】→）需求 → 规格化 → 计划 / 用例 / 验收标准 →【人工签字】→ 自动实现 → 独立验收 →【人工签字】→ 复盘 → 反哺流程。括号里的探索阶段是可选的，已有完整 PRD 时直接从"需求"开始。核心原则：
 
 1. **每个阶段的产物都是文件**（`specs/<date>-<slug>/`），不靠对话记忆；会话可以随时清空、中断、续跑。
 2. **闸门靠 hook 硬约束，不靠提示词**：未经人工批准，Claude 改代码会被直接拦截。
@@ -45,13 +45,13 @@ pnpm --filter @app/web exec playwright install chromium && pnpm test:e2e
 │   ├── settings.json             # 权限 + hooks（团队共享）
 │   ├── hooks/                    # guard-bash（高危命令）、format（prettier）
 │   ├── rules/                    # 按路径自动加载：api / web / db / shared / specs
-│   ├── agents/                   # requirement-analyst / test-designer / implementer / verifier / retro-analyst
-│   ├── commands/                 # /spec /plan-feature /approve /impl /verify /retro /ship
+│   ├── agents/                   # product-analyst / requirement-analyst / test-designer / implementer / verifier / retro-analyst
+│   ├── commands/                 # /discover /spec /plan-feature /approve /impl /verify /retro /ship
 │   ├── skills/fullstack-tdd/     # 实现顺序、验证命令、Gotchas
 │   └── proposals/                # /retro 产出的流程改进提案（人审后合入）
 ├── scripts/spec.mjs              # 流水线状态机 + hook 闸门（+ 测试）
 ├── specs/
-│   ├── _template/                # 00-input/ + 01~08 + 05-state.json
+│   ├── _template/                # 00-input/ + 01~08 + 05-state.json（探索模板：prd.discover.md、idea.md、discovery/）
 │   └── archive/2026-10-16-tasks/ # 走完全流程的示例 feature
 ├── docs/adr/
 ├── apps/web  apps/api
@@ -76,20 +76,36 @@ pnpm --filter @app/web exec playwright install chromium && pnpm test:e2e
 
 需要你看的时候，Claude 会停下来提醒你。`/approve <gate>` 可以让 Claude 帮你列出审阅要点，但**批准本身必须由你在自己的终端执行**，Claude 执行会被拒绝。
 
+### 只有一个想法、还没有 PRD 时
+
+第 1 步不用写 PRD，`init` 之后直接运行 `/discover <一句话想法>`，在第 2 步之前多出一段探索：
+
+| #   | 谁     | 做什么                                                                                                                                                   |
+| --- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1a  | Claude | `/discover` 自动切到探索阶段（`pnpm spec discover`），主会话分最多 4 轮问你（每轮 ≤ 4 问，带推荐选项），回答按原话记进 `00-input/discovery/interview.md` |
+| 1b  | Claude | product-analyst 子代理联网做竞品调研（`discovery/research.md`），生成结构化 `00-input/prd.md` → `pnpm spec submit discovery`                             |
+| 1c  | **你** | 审阅 PRD 与访谈记录，确认标为"推断"的功能 → `pnpm spec approve prd_review`；之后 `00-input/` 冻结，回到第 2 步                                           |
+
+`submit discovery` 会检查：访谈覆盖 8 个维度（问题 / 用户 / 场景 / 现状 / 目标 / 范围 / 约束 / 风险）；成功指标有目标值；MVP 至少一条 Must、一条 Won't，且每条都标了来源（访谈 Q-n、调研 R-n 或"推断"）。
+
+`prd.md` 已经有内容时 `/discover` 不会覆盖它，会提示你改用 `/spec`。想法探索后决定不做：`pnpm spec cancel "原因"`（任何阶段都可以用，标记 cancelled 并归档，保留访谈记录）。
+
 随时可用：`pnpm spec status`（当前状态与下一步）、`pnpm spec list`、`pnpm spec metrics`（各 feature 的流程度量趋势）、`pnpm spec help`。
 
 ## 闸门如何生效
 
-| stage              | Claude 能写的文件                                                   |
-| ------------------ | ------------------------------------------------------------------- |
-| drafting           | `00-input/`、`01-requirement.md`                                    |
-| requirement_review | `00-input/`、`01-requirement.md`（按审阅意见修改）                  |
-| planning           | `01`~`04`、`docs/adr/`                                              |
-| awaiting_approval  | `01`~`04`、`docs/adr/`                                              |
-| implementing       | 业务代码、`06-impl-log.md`、`docs/adr/`（02「禁止触碰的目录」除外） |
-| verifying          | `04-acceptance.md`（回填结果与证据）、`07-verify-report.md`         |
-| retro              | `08-retro.md`                                                       |
-| 任何时候           | `.claude/proposals/`                                                |
+| stage              | Claude 能写的文件                                                     |
+| ------------------ | --------------------------------------------------------------------- |
+| discovering        | `00-input/discovery/`、`00-input/prd.md`（`idea.md`、`design/` 只读） |
+| prd_review         | 同上（按审阅意见修改）                                                |
+| drafting           | `00-input/`、`01-requirement.md`（PRD 经 prd_review 批准后只有 01）   |
+| requirement_review | `00-input/`、`01-requirement.md`（按审阅意见修改；同上）              |
+| planning           | `01`~`04`、`docs/adr/`                                                |
+| awaiting_approval  | `01`~`04`、`docs/adr/`                                                |
+| implementing       | 业务代码、`06-impl-log.md`、`docs/adr/`（02「禁止触碰的目录」除外）   |
+| verifying          | `04-acceptance.md`（回填结果与证据）、`07-verify-report.md`           |
+| retro              | `08-retro.md`                                                         |
+| 任何时候           | `.claude/proposals/`                                                  |
 
 - **始终只读**：`05-state.json`、`specs/.current`（只能经 `pnpm spec`）、`specs/archive/`
 - **feature 进行中禁止修改流程本身**：CLAUDE.md、`.claude/{settings.json,hooks,rules,agents,commands,skills}`、`scripts/spec*.mjs`、`specs/_template/`
@@ -113,12 +129,13 @@ hooks 是防止"顺手"和长会话漂移的护栏，不是安全边界；真正
 | hooks 用 bash + jq                         | hooks 用 Node                                              | 不依赖 jq，跨平台                                 |
 | 测试依赖外部 Postgres                      | 开发/测试用 PGlite                                         | `pnpm verify` 在任何 worktree / CI 中一条命令跑完 |
 
-完整的决策记录见 [docs/adr/0002-harness-gates.md](docs/adr/0002-harness-gates.md)。
+完整的决策记录见 [docs/adr/0002-harness-gates.md](docs/adr/0002-harness-gates.md)；探索阶段的设计见 [docs/adr/0003-product-discovery-and-roadmap.md](docs/adr/0003-product-discovery-and-roadmap.md)（路线图与上线回看两部分暂未实施）。
 
 ## 常见问题
 
 - **Claude 被 hook 拦住了**：先看拦截信息里的"下一步"。多数情况是 stage 不对（例如 plan 还没被批准），这是预期行为。
 - **想临时改脚手架本身**：`pnpm spec pause` 进入维护模式，改完 `pnpm spec use <dir>` 恢复。
+- **需求不做了**：`pnpm spec cancel "原因"`。与 `pause` 不同，它会结束这个 feature 并归档，不能恢复。
 - **视觉基线**：截图按平台命名（`*-chromium-darwin.png`）。首次运行自动生成；在另一个平台（如 CI 的 Linux）首次运行时也会生成该平台的基线，需要提交后才开始比对。更新基线：`pnpm test:e2e --update-snapshots`。
 - **AGENTS.md 与 CLAUDE.md 怎么分工**：工具无关的内容只写 `AGENTS.md`（Codex、Cursor、Copilot 等读它）；`CLAUDE.md` 第一行 `@AGENTS.md` 导入它，下面只追加 Claude Code 专属机制。不用软链：Windows 上 git 默认不检出符号链接，而且"hook 会拦截"之类的描述对其他工具并不成立。
 - **Next.js 16 与模型训练数据不一致**：`apps/web/AGENTS.md` 由 `next dev` 维护，指引模型阅读 `node_modules/next/dist/docs/`；`apps/web/CLAUDE.md` 通过 `@AGENTS.md` 导入它（与根目录同一模式）。

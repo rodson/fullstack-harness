@@ -12,7 +12,7 @@
 
 1. **状态机是唯一真相源**：`specs/<dir>/05-state.json` 只能由 `scripts/spec.mjs` 修改（Edit/Write 与 shell 写入都会被 hook 拦截）。每次迁移写入 `history`，可追溯是谁、何时、为何推进或打回。
 2. **按 stage 的写入白名单**（PreToolUse `check-write`）：例如 drafting 只能写 01，verifying 只能写 04/07，只有 implementing 能写业务代码；02-plan.md「禁止触碰的目录」在实现阶段被硬拦截；feature 进行中禁止修改流程配置本身。
-3. **批准只能由人执行**：`approve` / `use` / `pause` 检测 `CLAUDECODE=1` 后拒绝执行，同时被 settings.json 的 deny 规则与 guard-bash hook 拦截。参考设计中由 Claude 执行的 `/approve` 改为"审阅助手"，只列出审阅要点。
+3. **批准只能由人执行**：`approve` / `use` / `pause`（ADR-0003 新增 `cancel`）检测 `CLAUDECODE=1` 后拒绝执行，同时被 settings.json 的 deny 规则与 guard-bash hook 拦截。参考设计中由 Claude 执行的 `/approve` 改为"审阅助手"，只列出审阅要点。
 4. **证据由脚本产生**：`pnpm spec verify` 运行 `pnpm verify`，把结果与输出尾部写入 05/06；Stop hook 依据"最近一次 verify 是否通过且晚于最后一次代码修改"决定是否允许收工（带 `stop_hook_active` 防死循环）。
 5. **追溯可机器检查**：`submit plan` 检查 AC ↔ TC 双向覆盖；`submit impl` 检查每个 TC 的落点文件存在且包含该 TC-ID。
 6. **子代理的写权限由 stage 闸门收窄，而不是靠工具列表**：verifier / requirement-analyst 需要写报告与需求文档，所以给 Write，但 hook 只允许它们写本阶段文件。

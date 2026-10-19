@@ -17,11 +17,12 @@ packages/shared（zod 契约）、packages/db（Drizzle + Postgres / PGlite）�
 ## 需求交付流程（强约束）
 
 每个需求一个目录 `specs/<date>-<slug>/`，顺序固定：
-01 需求 →【人批准】→ 02 计划 / 03 用例 / 04 验收 →【人批准】→ 实现 → 独立验收 →【人批准】→ 08 复盘
+（可选）00 探索 →【人批准】→ 01 需求 →【人批准】→ 02 计划 / 03 用例 / 04 验收 →【人批准】→ 实现 → 独立验收 →【人批准】→ 08 复盘
 
+- 入口只有 `pnpm spec init <slug>`：已有 PRD 就放进 `00-input/prd.md` 后运行 `/spec`；只有一句话想法就运行 `/discover <想法>`，先访谈出 PRD
 - 动手前先运行 `pnpm spec status`：每个 stage 只能改该阶段的文件，stage 不是 implementing 时不改业务代码
 - `05-state.json` 与 `specs/.current` 只能经 `pnpm spec <command>` 修改，不要直接编辑
-- `approve` / `use` / `pause` 是人工闸门，只能由人执行；完成阶段后提醒用户在自己的终端运行
+- `approve` / `use` / `pause` / `cancel` 是人工闸门，只能由人执行；完成阶段后提醒用户在自己的终端运行
 - 阶段产物都写进 `specs/` 下的文件，下一阶段只依据这些文件，不依赖对话记忆
 - 没有当前 feature 时是维护模式（改脚手架本身），不受 stage 限制
 - `specs/archive/` 与 `specs/_template/` 只读，不作为新需求的实现依据

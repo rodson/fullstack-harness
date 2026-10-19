@@ -18,6 +18,8 @@ const IS_AGENT = process.env.CLAUDECODE === '1'
 const ACTOR = IS_AGENT ? 'claude' : process.env.USER || 'human'
 
 const STAGES = [
+  'discovering',
+  'prd_review',
   'drafting',
   'requirement_review',
   'planning',
@@ -26,10 +28,14 @@ const STAGES = [
   'verifying',
   'retro',
   'done',
+  'cancelled',
 ]
 
-// 每个 stage 允许写的 feature 目录内文件（前缀匹配）
+// 每个 stage 允许写的 feature 目录内文件（前缀匹配）；实际生效的是 allowedWrites(st)
 const STAGE_WRITES = {
+  // idea.md 与 design/ 是人提供的原始材料，探索阶段只读
+  discovering: ['00-input/discovery/', '00-input/prd.md'],
+  prd_review: ['00-input/discovery/', '00-input/prd.md'],
   drafting: ['00-input/', '01-requirement.md'],
   requirement_review: ['00-input/', '01-requirement.md'],
   planning: ['01-requirement.md', '02-plan.md', '03-test-cases.md', '04-acceptance.md'],
@@ -38,6 +44,7 @@ const STAGE_WRITES = {
   verifying: ['04-acceptance.md', '07-verify-report.md'],
   retro: ['08-retro.md'],
   done: [],
+  cancelled: [],
 }
 const ADR_STAGES = new Set(['planning', 'awaiting_approval', 'implementing'])
 
@@ -57,7 +64,11 @@ const HARNESS = [
 ]
 
 const NEXT_STEP = {
-  drafting: '/spec 产出 01-requirement.md → pnpm spec submit requirement',
+  discovering: '/discover 访谈并产出 00-input/prd.md → pnpm spec submit discovery',
+  prd_review:
+    '人工审阅 00-input/prd.md 与 discovery/interview.md → 人在自己终端运行 pnpm spec approve prd_review（或 reject）',
+  drafting:
+    '/spec 产出 01-requirement.md → pnpm spec submit requirement（还没有 PRD：/discover <想法>）',
   requirement_review:
     '人工审阅 01-requirement.md → 人在自己终端运行 pnpm spec approve requirement_review（或 reject）',
   planning: '/plan-feature 产出 02/03/04 → pnpm spec submit plan',
@@ -68,16 +79,30 @@ const NEXT_STEP = {
     '新会话 /verify 独立验收 → pnpm spec verdict pass|fail；通过后人工 pnpm spec approve acceptance',
   retro: '/retro 复盘 → pnpm spec submit retro（归档）',
   done: '已完成',
+  cancelled: '已取消',
 }
 
 const GATE_RULES = {
   // gate: [要求的 stage, 批准后 stage, 打回后 stage]
+  prd_review: ['prd_review', 'drafting', 'discovering'],
   requirement_review: ['requirement_review', 'planning', 'drafting'],
   plan_review: ['awaiting_approval', 'implementing', 'planning'],
   acceptance: ['verifying', 'retro', 'implementing'],
 }
 
 const LEVELS = ['unit', 'integration', 'e2e', 'manual']
+// 探索阶段：访谈必须覆盖的维度（interview.md「维度」列）与 PRD 必填小节
+const DIMENSIONS = ['问题', '用户', '场景', '现状', '目标', '范围', '约束', '风险']
+const PRD_SECTIONS = [
+  '问题陈述',
+  '目标用户',
+  '现状',
+  '成功指标',
+  'MVP 范围',
+  '用户旅程',
+  '约束',
+  '风险',
+]
 const PASS_RE = /^(✅|通过|pass)/i
 const FAIL_RE = /^(❌|失败|fail)/i
 const SKIP_DIRS = new Set([
@@ -394,6 +419,13 @@ async function runVerify() {
 // hooks
 // ---------------------------------------------------------------------------
 
+/** 当前 stage 允许写的 feature 内文件；PRD 经人批准后 00-input/ 冻结 */
+function allowedWrites(st) {
+  const base = STAGE_WRITES[st.stage] ?? []
+  if (st.gates?.prd_review?.status !== 'approved') return base
+  return base.filter((p) => !p.startsWith('00-input/'))
+}
+
 /** PreToolUse(Edit|Write)：返回 null 表示放行，否则返回阻断原因 */
 function decideWrite(rel) {
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null
@@ -409,12 +441,13 @@ function decideWrite(rel) {
   }
   if (!feature) return null // 维护模式
 
-  let stage
+  let st
   try {
-    stage = JSON.parse(read(path.join(SPECS, feature, '05-state.json'))).stage
+    st = JSON.parse(read(path.join(SPECS, feature, '05-state.json')))
   } catch {
     return `specs/.current 指向 ${feature}，但其 05-state.json 不可读；请人工修复或运行 pnpm spec pause`
   }
+  const { stage } = st
 
   const harness =
     HARNESS.some((p) => rel === p || (p.endsWith('/') && rel.startsWith(p))) ||
@@ -425,13 +458,16 @@ function decideWrite(rel) {
   if (rel.startsWith('.claude/proposals/')) return null
 
   if (inSpecs) {
-    const allowed = STAGE_WRITES[stage] ?? []
+    const allowed = allowedWrites(st)
     const ok = allowed.some(
       (p) => inSpecs[2] === p || (p.endsWith('/') && inSpecs[2].startsWith(p)),
     )
-    return ok
-      ? null
-      : `stage=${stage} 只允许写 ${allowed.join('、') || '（无）'}，不能写 ${inSpecs[2]}。下一步：${NEXT_STEP[stage]}`
+    if (ok) return null
+    const frozen =
+      inSpecs[2].startsWith('00-input/') && st.gates?.prd_review?.status === 'approved'
+        ? '（PRD 已经人工批准，00-input/ 只读；有问题写进 01 的开放问题）'
+        : ''
+    return `stage=${stage} 只允许写 ${allowed.join('、') || '（无）'}，不能写 ${inSpecs[2]}${frozen}。下一步：${NEXT_STEP[stage]}`
   }
   if (rel.startsWith('docs/adr/') && ADR_STAGES.has(stage)) return null
   if (stage !== 'implementing') {
@@ -483,12 +519,12 @@ function checkStop() {
   process.exit(0)
 }
 
-function describeWrites(feature, stage) {
-  if (stage === 'implementing') {
+function describeWrites(feature, st) {
+  if (st.stage === 'implementing') {
     return `业务代码 + specs/${feature}/06-impl-log.md + docs/adr/（02-plan.md「禁止触碰的目录」除外）`
   }
-  const files = STAGE_WRITES[stage].map((f) => `specs/${feature}/${f}`)
-  if (ADR_STAGES.has(stage)) files.push('docs/adr/')
+  const files = allowedWrites(st).map((f) => `specs/${feature}/${f}`)
+  if (ADR_STAGES.has(st.stage)) files.push('docs/adr/')
   return files.join('、') || '（无）'
 }
 
@@ -497,7 +533,7 @@ function context() {
   const feature = currentFeature()
   if (!feature) {
     console.log(
-      '[spec] 当前没有激活的 feature（维护模式：写操作不受 stage 闸门限制）。新需求：pnpm spec init <slug>，再把 PRD/设计稿放进 00-input/ 后运行 /spec。',
+      '[spec] 当前没有激活的 feature（维护模式：写操作不受 stage 闸门限制）。新需求：pnpm spec init <slug>；已有 PRD 就放进 00-input/ 后运行 /spec，只有一句话想法就直接运行 /discover <想法>。',
     )
     return
   }
@@ -512,7 +548,7 @@ function context() {
   }
   const lines = [
     `[spec] 当前 feature：specs/${feature}（stage=${st.stage}）`,
-    `[spec] 本阶段允许写：${describeWrites(feature, st.stage)}`,
+    `[spec] 本阶段允许写：${describeWrites(feature, st)}`,
     `[spec] 下一步：${NEXT_STEP[st.stage]}`,
   ]
   if (st.stage === 'implementing' && st.gates.acceptance.status === 'failed') {
@@ -531,6 +567,26 @@ function localDate() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+/** 复制模板文件或目录到 feature 目录，并替换占位符 */
+function copyTemplate(from, to, vars) {
+  fs.cpSync(from, to, { recursive: true })
+  const walk = (p) =>
+    fs.statSync(p).isDirectory()
+      ? fs.readdirSync(p).flatMap((name) => walk(path.join(p, name)))
+      : [p]
+  for (const file of walk(to)) {
+    const text = read(file)
+    const replaced = text
+      .replaceAll('{{SLUG}}', vars.slug)
+      .replaceAll('{{DATE}}', vars.date)
+      .replaceAll('{{DIR}}', vars.name)
+    if (replaced !== text) fs.writeFileSync(file, replaced)
+  }
+}
+
+// 只在探索阶段使用的模板，普通 init 不带；/discover 切换时（pnpm spec discover）再复制
+const DISCOVERY_TEMPLATES = ['prd.discover.md', 'idea.md', 'discovery']
+
 function init(slug) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug ?? ''))
     fail('用法：pnpm spec init <slug>（小写字母、数字、连字符）')
@@ -541,21 +597,14 @@ function init(slug) {
   const dir = path.join(SPECS, name)
   if (exists(dir)) fail(`已存在：specs/${name}`)
 
-  fs.cpSync(TEMPLATE, dir, { recursive: true })
-  const walk = (d) =>
-    fs
-      .readdirSync(d, { withFileTypes: true })
-      .flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]))
-  for (const file of walk(dir)) {
-    const text = read(file)
-    const replaced = text
-      .replaceAll('{{SLUG}}', slug)
-      .replaceAll('{{DATE}}', date)
-      .replaceAll('{{DIR}}', name)
-    if (replaced !== text) fs.writeFileSync(file, replaced)
-  }
+  copyTemplate(TEMPLATE, dir, { slug, date, name })
+  for (const entry of DISCOVERY_TEMPLATES)
+    fs.rmSync(path.join(dir, '00-input', entry), { recursive: true, force: true })
   fs.writeFileSync(CURRENT, `${name}\n`)
   const ctx = open()
+  // 探索阶段的 gate 与度量由这里补齐（05-state.json 模板也属于状态文件，不直接改）
+  ctx.st.gates = { prd_review: { status: 'skipped', by: null, at: null }, ...ctx.st.gates }
+  ctx.st.metrics = { discovery_questions: 0, prd_inferred: 0, ...ctx.st.metrics }
   ctx.st.history.push({ at: now(), by: ACTOR, action: 'init', to: 'drafting' })
   ctx.save()
 
@@ -565,13 +614,121 @@ function init(slug) {
   })
   const onMain = ['main', 'master'].includes(branch.stdout?.trim())
   console.log(`✔ 已创建 specs/${name}（已设为当前 feature，stage=drafting）
-下一步：
-  1. 把原始需求写进 specs/${name}/00-input/prd.md，设计稿截图放进 00-input/design/
-  2. 在 Claude Code 里运行 /spec${onMain ? `\n提示：你在 ${branch.stdout.trim()} 分支上。建议改在 worktree 中进行：\n  git worktree add ../${path.basename(ROOT)}-${slug} -b feature/${slug}` : ''}`)
+下一步（二选一）：
+  · 已有 PRD：把原文写进 specs/${name}/00-input/prd.md，设计稿截图放进 00-input/design/，然后运行 /spec
+  · 只有想法：直接运行 /discover <一句话想法>（较长的材料可先写进 00-input/idea.md）${onMain ? `\n提示：你在 ${branch.stdout.trim()} 分支上。建议改在 worktree 中进行：\n  git worktree add ../${path.basename(ROOT)}-${slug} -b feature/${slug}` : ''}`)
+}
+
+/** drafting → discovering：PRD 还是空模板时，换成结构化 PRD 模板，改由访谈生成 */
+function discover() {
+  const ctx = open()
+  expectStage(ctx, 'drafting')
+  if ((ctx.st.gates.prd_review?.status ?? 'skipped') !== 'skipped')
+    fail(
+      `这个 feature 已经走过探索阶段（prd_review=${ctx.st.gates.prd_review.status}），PRD 以已批准的为准`,
+    )
+  const input = ctx.file('00-input')
+  const filled = meaningfulLines(stripComments(read(path.join(input, 'prd.md')))).filter(
+    (l) => !l.startsWith('#'),
+  )
+  if (filled.length)
+    fail(
+      '00-input/prd.md 已经有内容：已有 PRD 请直接运行 /spec；确实要从想法重新开始，先清空 prd.md',
+    )
+
+  const vars = { slug: ctx.st.feature, date: ctx.st.createdAt, name: ctx.name }
+  copyTemplate(path.join(TEMPLATE, '00-input/prd.discover.md'), path.join(input, 'prd.md'), vars)
+  copyTemplate(path.join(TEMPLATE, '00-input/discovery'), path.join(input, 'discovery'), vars)
+  if (!exists(path.join(input, 'idea.md')))
+    copyTemplate(path.join(TEMPLATE, '00-input/idea.md'), path.join(input, 'idea.md'), vars)
+  ctx.st.gates.prd_review = { status: 'pending', by: null, at: null }
+  transition(ctx, 'discovering', 'discover')
+  ctx.save()
+  console.log(
+    `✔ 已切换到探索阶段（stage=discovering），prd.md 已换成结构化模板。\n下一步：${NEXT_STEP.discovering}`,
+  )
+}
+
+/** 探索阶段产物检查：interview.md 覆盖全部维度；PRD 小节齐全、MVP 每条可追溯 */
+function discoveryCheck(ctx) {
+  const errors = []
+  const interviewFile = ctx.file('00-input/discovery/interview.md')
+  const interview = exists(interviewFile) ? findTable(read(interviewFile), 'Q-ID', '维度') : null
+  const questions = interview
+    ? interview.rows
+        .filter((r) => /^Q-\d+$/.test(r[0]))
+        .map((r) => ({
+          id: r[0],
+          dim: cell(interview, r, '维度'),
+          answer: cell(interview, r, '回答'),
+        }))
+    : []
+  if (!interview) errors.push('00-input/discovery/interview.md 缺少访谈表（表头含 Q-ID、维度）')
+  for (const q of questions)
+    if (!q.answer) errors.push(`${q.id} 的「回答」为空（不答请写"未回答"）`)
+  for (const dim of DIMENSIONS) {
+    if (!questions.some((q) => q.dim.includes(dim))) errors.push(`访谈没有覆盖「${dim}」维度`)
+  }
+
+  const researchFile = ctx.file('00-input/discovery/research.md')
+  const research = exists(researchFile) ? findTable(read(researchFile), 'R-ID') : null
+  const sources = new Set([
+    ...questions.map((q) => q.id),
+    ...(research?.rows.filter((r) => /^R-\d+$/.test(r[0])).map((r) => r[0]) ?? []),
+  ])
+
+  const prd = read(ctx.file('00-input/prd.md'))
+  for (const key of PRD_SECTIONS) {
+    const text = section(prd, key)
+    if (text === null) errors.push(`prd.md 缺少「${key}」小节`)
+    else if (!meaningfulLines(text).length) errors.push(`prd.md「${key}」小节为空`)
+  }
+  const goals = findTable(prd, '指标', '目标值')
+  if (!goals?.rows.some((r) => cell(goals, r, '指标') && cell(goals, r, '目标值')))
+    errors.push('prd.md「成功指标」至少要有一行写明目标值')
+
+  const mvp = findTable(prd, '能力', '优先级', '来源')
+  const items = mvp
+    ? mvp.rows
+        .filter((r) => cell(mvp, r, '能力'))
+        .map((r) => ({
+          name: cell(mvp, r, '能力'),
+          priority: cell(mvp, r, '优先级'),
+          source: cell(mvp, r, '来源'),
+        }))
+    : []
+  if (!items.some((i) => /must/i.test(i.priority))) errors.push('MVP 范围至少要有一条 Must')
+  if (!items.some((i) => /won'?t|不做/i.test(i.priority)))
+    errors.push("MVP 范围至少要有一条 Won't（明确不做什么）")
+  const inferred = []
+  for (const item of items) {
+    const refs = item.source.match(/\b[QR]-\d+\b/g) ?? []
+    if (item.source.includes('推断')) inferred.push(item.name)
+    else if (!refs.length) errors.push(`MVP「${item.name}」没有来源：写 Q-n、R-n，或标"推断"`)
+    for (const ref of refs)
+      if (!sources.has(ref)) errors.push(`MVP「${item.name}」引用了不存在的 ${ref}`)
+  }
+  return { errors, questions, inferred }
 }
 
 function submit(what) {
   const ctx = open()
+  if (what === 'discovery') {
+    expectStage(ctx, 'discovering')
+    const { errors, questions, inferred } = discoveryCheck(ctx)
+    failWith('探索阶段产物未通过检查：', errors)
+
+    ctx.st.metrics.discovery_questions = questions.length
+    ctx.st.metrics.prd_inferred = inferred.length
+    ctx.st.gates.prd_review.status = 'in_review'
+    transition(ctx, 'prd_review', 'submit discovery')
+    ctx.save()
+    console.log(`✔ PRD 已提交审阅（访谈 ${questions.length} 问，${inferred.length} 条推断项）。
+请用户审阅 00-input/prd.md 与 00-input/discovery/interview.md，然后在自己终端运行：
+  pnpm spec approve prd_review     或     pnpm spec reject prd_review "原因"`)
+    return
+  }
+
   if (what === 'requirement') {
     expectStage(ctx, 'drafting')
     const md = read(ctx.file('01-requirement.md'))
@@ -656,7 +813,7 @@ function submit(what) {
     return
   }
 
-  fail('用法：pnpm spec submit requirement|plan|impl|retro')
+  fail('用法：pnpm spec submit discovery|requirement|plan|impl|retro')
 }
 
 function verdict(kind) {
@@ -702,6 +859,14 @@ function approve(gate) {
   expectStage(ctx, rule[0])
   const force = process.argv.includes('--force')
 
+  if (gate === 'prd_review') {
+    const { errors, inferred } = discoveryCheck(ctx)
+    failWith('探索阶段产物检查失败（审阅时改过文档？）：', errors)
+    if (inferred.length)
+      console.log(
+        `⚠ 以下 MVP 能力是推断（访谈中没有直接依据），批准即视为认可：${inferred.join('、')}`,
+      )
+  }
   if (gate === 'requirement_review') {
     const oq = findTable(read(ctx.file('01-requirement.md')), 'ID', '默认选择')
     const unanswered = oq ? oq.rows.filter((r) => /^OQ-\d+/.test(r[0]) && !cell(oq, r, '结论')) : []
@@ -750,6 +915,19 @@ function pause() {
   if (!feature) fail('当前没有激活的 feature')
   fs.rmSync(CURRENT)
   console.log(`✔ 已暂停 ${feature}，进入维护模式（恢复：pnpm spec use ${feature}）`)
+}
+
+/** 放弃当前 feature：标记 cancelled 并归档，保留已有产物（包括访谈记录）作为决策依据 */
+function cancel(reason) {
+  humanOnly()
+  if (!reason) fail('请写明取消原因：pnpm spec cancel "原因"')
+  const ctx = open()
+  transition(ctx, 'cancelled', 'cancel', reason)
+  ctx.save()
+  fs.mkdirSync(ARCHIVE, { recursive: true })
+  fs.renameSync(ctx.dir, path.join(ARCHIVE, ctx.name))
+  fs.rmSync(CURRENT, { force: true })
+  console.log(`✔ 已取消 ${ctx.name}（原因：${reason}），归档到 specs/archive/，进入维护模式`)
 }
 
 function status(arg, asJson) {
@@ -804,6 +982,8 @@ function list() {
 
 function metrics() {
   const keys = [
+    'discovery_questions',
+    'prd_inferred',
     'open_questions',
     'plan_deviations',
     'ac_failed',
@@ -829,17 +1009,19 @@ function checkTrace(arg, files) {
 const HELP = `pnpm spec <command>
 
 流程（Claude 可执行）
-  init <slug>                  从 specs/_template 创建 feature 并设为当前
-  submit requirement|plan|impl|retro
+  init <slug>                  从 specs/_template 创建 feature 并设为当前（stage=drafting）
+  discover                     drafting 且 prd.md 为空时切到探索阶段（/discover 自动调用）
+  submit discovery|requirement|plan|impl|retro
                                校验本阶段产物并推进到下一 stage
   verify                       运行 pnpm verify，记录证据（implementing 时追加到 06-impl-log.md）
   verdict pass|fail            verifier 给出验收判定
   reject <gate> "原因"          打回某个闸门（计入 human_interventions）
 
 人工闸门（只能由人在自己的终端执行）
-  approve <gate> [--force]     gate = requirement_review | plan_review | acceptance
+  approve <gate> [--force]     gate = prd_review | requirement_review | plan_review | acceptance
   use <dir>                    切换当前 feature
   pause                        退出当前 feature（维护模式）
+  cancel "原因"                 放弃当前 feature：标记 cancelled 并归档
 
 查询
   status [dir] [--json]        当前状态与下一步
@@ -859,6 +1041,9 @@ const args = rest.filter((a) => !a.startsWith('--'))
 switch (cmd) {
   case 'init':
     init(args[0])
+    break
+  case 'discover':
+    discover()
     break
   case 'submit':
     submit(args[0])
@@ -880,6 +1065,9 @@ switch (cmd) {
     break
   case 'pause':
     pause()
+    break
+  case 'cancel':
+    cancel(args.join(' '))
     break
   case 'status':
     status(args[0], flags.has('--json'))

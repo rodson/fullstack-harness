@@ -9,8 +9,11 @@ tools: Read, Grep, Glob, Write, Edit
 ## 输入
 
 - `specs/<feature>/00-input/prd.md`（唯一需求来源）
+- `00-input/discovery/interview.md` 与 `research.md`（若存在：PRD 由 /discover 生成，访谈原话是 PRD 的依据）
 - `00-input/design/` 下全部截图（用 Read 逐张查看）、`00-input/figma.txt`
 - 现有代码与 `CLAUDE.md` 的架构事实：只用来判断需求与现有能力的差距，不要设计实现
+
+PRD 经过 `prd_review` 批准后，`00-input/` 只读：PRD 与访谈原话冲突、或 MVP 中的"推断"项影响规格时，写进开放问题，不要改 PRD。
 
 ## 产出：01-requirement.md（七个小节都必须有内容）
 

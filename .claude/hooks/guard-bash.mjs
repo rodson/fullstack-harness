@@ -31,7 +31,10 @@ const RULES = [
     /\bdrizzle-kit\s+(push|drop)\b/,
     'drizzle-kit push/drop 会绕过可审阅的迁移文件，请用 pnpm db:generate',
   ],
-  [/\bspec(\.mjs)?["']?\s+(approve|use|pause)\b/, 'approve/use/pause 是人工闸门，只能由人执行'],
+  [
+    /\bspec(\.mjs)?["']?\s+(approve|use|pause|cancel)\b/,
+    'approve/use/pause/cancel 是人工闸门，只能由人执行',
+  ],
   [
     /\b(SPEC_ROOT|SPEC_VERIFY_CMD|CLAUDECODE)=|\bunset\s+CLAUDECODE\b|\benv\s+-u\s*CLAUDECODE\b/,
     '不允许覆盖流程状态机依赖的环境变量',
